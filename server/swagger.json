@@ -1,0 +1,239 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Cricket Knowledge RAG Chatbot API",
+    "version": "1.0.0",
+    "description": "API documentation for the Cricket Knowledge RAG (Retrieval-Augmented Generation) Chatbot. This backend parses documents (PDF, DOCX, TXT), chunks them, embeds them with the Gemini API, stores them in MongoDB Atlas, and performs Vector Search to answer questions."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/upload": {
+      "post": {
+        "summary": "Upload and index a Cricket document",
+        "description": "Uploads a PDF, DOCX, or TXT file. The server extracts the raw text, splits it into chunks of 500-1000 characters (with 100 character overlap), generates 768-dimensional embeddings using Gemini, and saves them to MongoDB Atlas for vector search.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file to upload (PDF, DOCX, or TXT format)."
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Document parsed, embedded, and indexed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "File uploaded, parsed, embedded, and indexed successfully."
+                    },
+                    "filename": {
+                      "type": "string",
+                      "example": "cricket_rules.pdf"
+                    },
+                    "chunksCount": {
+                      "type": "integer",
+                      "example": 14
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (e.g. invalid file extension, empty file, or no file uploaded).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Invalid file type. Only PDF, DOCX, and TXT files are accepted."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error (e.g. Gemini API failure or DB connection issues).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to process uploaded file: Gemini API rate limit exceeded."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ask": {
+      "post": {
+        "summary": "Ask a cricket question",
+        "description": "Queries the vector database for the top 5 most relevant chunks using semantic search, constructs a retrieval-augmented context prompt, and generates a response from Gemini restricted to the uploaded content.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "description": "The cricket question you want to ask.",
+                    "example": "Why is a googly difficult to play?"
+                  }
+                },
+                "required": [
+                  "question"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "RAG answer generated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "answer": {
+                      "type": "string",
+                      "example": "A googly is difficult to play because it looks like a normal leg-break but spins in the opposite direction."
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "filename": {
+                            "type": "string",
+                            "example": "cricket_rules.pdf"
+                          },
+                          "chunkId": {
+                            "type": "integer",
+                            "example": 3
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (e.g. missing question field).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "The 'question' field is required and must be a non-empty string."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error (e.g. Vector Search failure or LLM service failure).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to answer the question: Vector Search Failure."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "summary": "List all uploaded files and chunk counts",
+        "description": "Queries MongoDB Atlas using aggregation to group chunks by their originating filename, returning a unique list of indexed files with their total chunks.",
+        "responses": {
+          "200": {
+            "description": "List of indexed documents retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filename": {
+                        "type": "string",
+                        "example": "cricket_rules.pdf"
+                      },
+                      "chunkCount": {
+                        "type": "integer",
+                        "example": 14
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to fetch uploaded documents list: Database timeout."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
