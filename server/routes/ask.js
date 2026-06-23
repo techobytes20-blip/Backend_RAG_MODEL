@@ -105,6 +105,15 @@ router.post('/', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /ask route processing:', error);
+    
+    // Serve fallback message without caching it if generation failed due to traffic/quota
+    if (error.message && error.message.includes('High traffic fallback triggered')) {
+      return res.status(200).json({
+        answer: 'I am currently experiencing high traffic and cannot process your request. Please try again in a few moments.',
+        sources: []
+      });
+    }
+
     return res.status(500).json({ error: `Failed to answer the question: ${error.message}` });
   }
 });

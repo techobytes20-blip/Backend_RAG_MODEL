@@ -148,7 +148,7 @@ ${question}`;
     }
   }
 
-  // Graceful fallback if all retries fail
-  console.error(`[Fallback] All retries exhausted. Providing fallback response. Error:`, lastError?.message);
-  return 'I am currently experiencing high traffic and cannot process your request. Please try again in a few moments.';
+  // Throw an error so the cache manager doesn't cache the fallback message
+  console.error(`[Fallback] All retries exhausted. Error:`, lastError?.message);
+  throw new Error('All retries exhausted. High traffic fallback triggered.');
 };
