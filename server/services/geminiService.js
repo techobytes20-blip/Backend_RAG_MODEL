@@ -51,7 +51,7 @@ const withRetry = async (fn, maxRetries = 3) => {
       const errMsg = error.message.toLowerCase();
       const isRateLimit = errMsg.includes('429') || errMsg.includes('too many requests') || errMsg.includes('quota') || errMsg.includes('resource_exhausted');
       const isServerBusy = errMsg.includes('503') || errMsg.includes('service unavailable');
-      
+
       if ((isRateLimit || isServerBusy) && attempt < maxRetries - 1) {
         attempt++;
         // Exponential backoff with jitter: (2^attempt * 1000) + random jitter (0-500ms)
@@ -71,7 +71,7 @@ const withRetry = async (fn, maxRetries = 3) => {
 const optimizeContext = (chunks) => {
   // 1. Take only the top 3 most relevant chunks (Atlas returns them ordered by relevance)
   const topChunks = chunks.slice(0, 3).map(chunk => chunk.text);
-  
+
   // 2. Join them safely
   return topChunks.join('\n\n');
 };
@@ -96,7 +96,7 @@ export const generateAnswer = async (question, retrievedChunks) => {
 
   requestCount++;
   const startTime = performance.now();
-  
+
   const systemInstruction = `You are a cricket knowledge assistant.
 Answer using ONLY the provided context. If the exact answer is missing, state what the context says about the topic or say "I could not find this information in the uploaded documents."`;
 
@@ -106,26 +106,26 @@ ${contextString}
 Question:
 ${question}`;
 
-  const modelsToTry = ['gemini-2.5-flash'];
+  const modelsToTry = ['gemini-2.5-flash-lite'];
   const genAI = getGenAI();
   let lastError = null;
 
   for (const modelName of modelsToTry) {
     try {
       console.log(`[API Call] (#${requestCount}) Model: ${modelName} | Prompt Size: ~${prompt.length} chars`);
-      
-      const model = genAI.getGenerativeModel({ 
+
+      const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction: systemInstruction
       });
-      
+
       // Wrap the generation in a retry block and a 15-second timeout
       const result = await withRetry(() => withTimeout(model.generateContent(prompt), 15000), 3);
-      
+
       if (result && result.response) {
         const text = result.response.text();
         const finalAnswer = text ? text.trim() : 'I could not find this information in the uploaded documents.';
-        
+
         const endTime = performance.now();
         console.log(`[Success] Answered in ${Math.round(endTime - startTime)}ms`);
 
