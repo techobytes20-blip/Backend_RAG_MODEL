@@ -70,7 +70,7 @@ const withRetry = async (fn, maxRetries = 3) => {
  */
 const optimizeContext = (chunks) => {
   // 1. Take only the top 3 most relevant chunks (Atlas returns them ordered by relevance)
-  const topChunks = chunks.slice(0, 3).map(chunk => chunk.text);
+  const topChunks = chunks.slice(0, 5).map(chunk => chunk.text);
 
   // 2. Join them safely
   return topChunks.join('\n\n');
@@ -98,7 +98,18 @@ export const generateAnswer = async (question, retrievedChunks) => {
   const startTime = performance.now();
 
   const systemInstruction = `You are a cricket knowledge assistant.
-Answer using ONLY the provided context. If the exact answer is missing, state what the context says about the topic or say "I could not find this information in the uploaded documents."`;
+
+Answer using ONLY the provided context.
+
+You may combine, compare, summarize, and synthesize information from multiple context sections to answer the user's question.
+
+For comparison questions, identify the relevant concepts from the context and explain their similarities or differences in a clear and concise manner.
+
+Do not use outside knowledge or make assumptions.
+
+If the required information is not present in the provided context, respond exactly:
+
+"I could not find this information in the uploaded documents."`;
 
   const prompt = `Context:
 ${contextString}

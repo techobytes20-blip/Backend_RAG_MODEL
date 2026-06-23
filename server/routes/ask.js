@@ -9,7 +9,7 @@ const router = express.Router();
 /**
  * Helper to ensure diverse chunks are selected for comparison queries.
  */
-const selectDiverseChunks = (question, chunks, limit = 3) => {
+const selectDiverseChunks = (question, chunks, limit = 5) => {
   if (!chunks || chunks.length <= limit) return chunks;
 
   const stopWords = ['what', 'is', 'the', 'difference', 'between', 'and', 'compare', 'vs', 'versus', 'how', 'why', 'are', 'in', 'of', 'a', 'to', 'for', 'with', 'on'];
@@ -68,7 +68,13 @@ router.post('/', async (req, res) => {
       const candidateChunks = await vectorSearchService.searchSimilar(queryEmbedding, 10);
       
       // Apply Keyword-Coverage Re-ranking to select exactly 3 chunks
-      const retrievedChunks = selectDiverseChunks(question.trim(), candidateChunks, 3);
+      const retrievedChunks = selectDiverseChunks(question.trim(), candidateChunks, 5);
+
+      console.log("Retrieved Chunks:");
+      retrievedChunks.forEach((chunk, index) => {
+        console.log(`Chunk ${index + 1}:`);
+        console.log(chunk.text.substring(0, 300));
+      });
 
       // If no context chunks exist, return default message
       if (!retrievedChunks || retrievedChunks.length === 0) {
