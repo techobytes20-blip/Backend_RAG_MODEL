@@ -21,7 +21,7 @@ router.post('/', async (req, res) => {
 
     // 2. Perform Atlas Vector Search
     console.log('Searching MongoDB Atlas Vector Index...');
-    const retrievedChunks = await vectorSearchService.searchSimilar(queryEmbedding, 5);
+    const retrievedChunks = await vectorSearchService.searchSimilar(queryEmbedding, 3);
 
     // If no context chunks exist, return default message
     if (!retrievedChunks || retrievedChunks.length === 0) {
