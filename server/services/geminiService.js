@@ -117,7 +117,7 @@ ${contextString}
 Question:
 ${question}`;
 
-  const modelsToTry = ['gemini-2.5-flash-lite'];
+  const modelsToTry = ['gemini-2.0-flash'];
   const genAI = getGenAI();
   let lastError = null;
 
