@@ -50,7 +50,7 @@ const withRetry = async (fn, maxRetries = 3) => {
     } catch (error) {
       const errMsg = error.message.toLowerCase();
       const isRateLimit = errMsg.includes('429') || errMsg.includes('too many requests') || errMsg.includes('quota') || errMsg.includes('resource_exhausted');
-      const isServerBusy = errMsg.includes('503') || errMsg.includes('service unavailable');
+      const isServerBusy = errMsg.includes('503') || errMsg.includes('service unavailable') || errMsg.includes('500') || errMsg.includes('internal error') || errMsg.includes('timeout');
 
       if ((isRateLimit || isServerBusy) && attempt < maxRetries - 1) {
         attempt++;
@@ -117,7 +117,7 @@ ${contextString}
 Question:
 ${question}`;
 
-  const modelsToTry = ['gemini-2.0-flash'];
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
   const genAI = getGenAI();
   let lastError = null;
 
@@ -130,8 +130,8 @@ ${question}`;
         systemInstruction: systemInstruction
       });
 
-      // Wrap the generation in a retry block and a 15-second timeout
-      const result = await withRetry(() => withTimeout(model.generateContent(prompt), 15000), 3);
+      // Wrap the generation in a retry block and a 30-second timeout
+      const result = await withRetry(() => withTimeout(model.generateContent(prompt), 30000), 3);
 
       if (result && result.response) {
         const text = result.response.text();
