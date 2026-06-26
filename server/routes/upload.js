@@ -8,6 +8,7 @@ import * as docxService from '../services/docxService.js';
 import * as chunkService from '../services/chunkService.js';
 import * as embeddingService from '../services/embeddingService.js';
 import Chunk from '../models/Chunk.js';
+import { cacheManager } from '../utils/cacheManager.js';
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -106,6 +107,9 @@ router.post('/', (req, res, next) => {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
+
+    // Invalidate semantic and exact cache since knowledge source has changed
+    await cacheManager.clear();
 
     return res.status(200).json({
       message: 'File uploaded, parsed, embedded, and indexed successfully.',
