@@ -107,6 +107,8 @@ For comparison questions, identify the relevant concepts from the context and ex
 
 Do not use outside knowledge or make assumptions.
 
+Do not use markdown bolding (double asterisks like **) in your response. Present headings or labels as plain text followed by a colon (e.g., "Category: Batting" instead of "**Category:** Batting").
+
 If the required information is not present in the provided context, respond exactly:
 
 "I could not find this information in the uploaded documents."`;
@@ -135,7 +137,10 @@ ${question}`;
 
       if (result && result.response) {
         const text = result.response.text();
-        const finalAnswer = text ? text.trim() : 'I could not find this information in the uploaded documents.';
+        let finalAnswer = text ? text.trim() : 'I could not find this information in the uploaded documents.';
+        
+        // Remove any markdown bolding symbols (**)
+        finalAnswer = finalAnswer.replace(/\*\*/g, '');
 
         const endTime = performance.now();
         console.log(`[Success] Answered in ${Math.round(endTime - startTime)}ms`);
