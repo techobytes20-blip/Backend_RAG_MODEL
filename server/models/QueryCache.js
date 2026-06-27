@@ -22,7 +22,8 @@ const QueryCacheSchema = new mongoose.Schema({
   sources: [
     {
       filename: { type: String, required: true },
-      chunkId: { type: Number, required: true }
+      chunkId: { type: Number, required: true },
+      pageNumber: { type: Number, required: false }
     }
   ],
   createdAt: {

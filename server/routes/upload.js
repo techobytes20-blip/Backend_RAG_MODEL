@@ -56,7 +56,6 @@ router.post('/', (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
   }
-
   const filePath = req.file.path;
   const originalName = req.file.originalname;
 
@@ -65,38 +64,55 @@ router.post('/', (req, res, next) => {
     const ext = path.extname(originalName).toLowerCase();
     const buffer = fs.readFileSync(filePath);
 
-    // 1. Text extraction based on file extension
+    // 1. Text extraction based on file extension (normalizing into page array)
+    let pages = [];
     if (ext === '.pdf') {
-      text = await pdfService.extractText(buffer);
+      pages = await pdfService.extractTextWithPages(buffer);
     } else if (ext === '.docx') {
       text = await docxService.extractText(buffer);
+      pages = [{ pageNumber: 1, text }];
     } else if (ext === '.txt') {
       text = buffer.toString('utf-8');
+      pages = [{ pageNumber: 1, text }];
     }
 
     // 2. Validate extracted text
-    if (!text || text.trim().length === 0) {
+    const hasText = pages.some(p => p.text && p.text.trim().length > 0);
+    if (!hasText) {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       return res.status(400).json({ error: 'The uploaded file is empty or contains no extractable text.' });
     }
 
-    // 3. Chunk text into 500-1000 character windows with 100 character overlap
-    const chunks = chunkService.createChunks(text, 500, 1000, 100);
+    // 3. Chunk text page-by-page into 500-1000 character windows with 200 character overlap
+    const chunks = [];
+    for (const page of pages) {
+      if (!page.text || page.text.trim().length === 0) continue;
+      const pageChunks = chunkService.createChunks(page.text, 500, 1000, 200);
+      for (const chunkText of pageChunks) {
+        chunks.push({
+          text: chunkText,
+          pageNumber: page.pageNumber
+        });
+      }
+    }
+
     if (chunks.length === 0) {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       return res.status(400).json({ error: 'Failed to split document text into semantic chunks.' });
     }
 
     // 4. Generate embeddings for all chunks sequentially (rate limit safe)
+    const chunkTexts = chunks.map(c => c.text);
     console.log(`Generating embeddings for ${chunks.length} chunks of "${originalName}"...`);
-    const embeddings = await embeddingService.generateEmbeddingsBatch(chunks);
+    const embeddings = await embeddingService.generateEmbeddingsBatch(chunkTexts);
 
     // 5. Build database documents
-    const chunkDocuments = chunks.map((chunkText, index) => ({
+    const chunkDocuments = chunks.map((chunk, index) => ({
       filename: originalName,
       chunkId: index,
-      text: chunkText,
+      text: chunk.text,
       embedding: embeddings[index],
+      pageNumber: chunk.pageNumber,
       createdAt: new Date()
     }));
 

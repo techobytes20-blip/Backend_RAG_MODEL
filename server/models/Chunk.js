@@ -18,11 +18,18 @@ const ChunkSchema = new mongoose.Schema({
     type: [Number],
     required: true
   },
+  pageNumber: {
+    type: Number,
+    required: false
+  },
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
+
+// Compound index to optimize window/parent retrieval query
+ChunkSchema.index({ filename: 1, chunkId: 1 });
 
 // Create Mongoose Model
 const Chunk = mongoose.model('Chunk', ChunkSchema);

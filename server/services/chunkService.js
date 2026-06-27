@@ -1,69 +1,94 @@
 /**
- * Splits text into chunks of 500-1000 characters with a 100-character overlap.
- * Tries to align chunk boundaries with sentences or word boundaries to preserve semantics.
+ * Splits text recursively using logical separators to preserve structural formatting (e.g. paragraphs, lists).
+ * Uses backtracking to construct syntactic overlap instead of slicing blindly mid-word.
  * 
  * @param {string} text - The input text to chunk.
- * @param {number} minSize - Minimum chunk size (default: 500).
+ * @param {number} minSize - Minimum chunk size (ignored, kept for signature compatibility).
  * @param {number} maxSize - Maximum chunk size (default: 1000).
- * @param {number} overlap - Overlap size between adjacent chunks (default: 100).
+ * @param {number} overlap - Overlap size between adjacent chunks (default: 200).
  * @returns {string[]} An array of text chunks.
  */
-export const createChunks = (text, minSize = 500, maxSize = 1000, overlap = 100) => {
+export const createChunks = (text, minSize = 500, maxSize = 1000, overlap = 200) => {
   if (!text || typeof text !== 'string') return [];
   
-  // Normalize whitespace to avoid empty chunks or formatting issues
-  const normalizedText = text.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
+  // Normalize Windows newlines and multiple spaces, but preserve newlines
+  const cleanedText = text.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
   
-  if (normalizedText.length <= maxSize) {
-    return normalizedText.length > 0 ? [normalizedText] : [];
+  if (cleanedText.length <= maxSize) {
+    return cleanedText.length > 0 ? [cleanedText] : [];
   }
   
-  const chunks = [];
-  let start = 0;
-  const textLength = normalizedText.length;
+  const separators = ['\n\n', '\n', ' ', ''];
   
-  while (start < textLength) {
-    let end = start + maxSize;
-    if (end >= textLength) {
-      end = textLength;
-    } else {
-      // Look for a sentence or word boundary within [start + minSize, end]
-      const searchWindow = normalizedText.slice(start + minSize, end);
-      
-      // Try to find the last sentence boundary (., !, ?) followed by a space
-      const sentenceBoundaryIndex = Math.max(
-        searchWindow.lastIndexOf('. '),
-        searchWindow.lastIndexOf('! '),
-        searchWindow.lastIndexOf('? ')
-      );
-      
-      if (sentenceBoundaryIndex !== -1) {
-        // End boundary is at the end of the sentence (including punctuation)
-        end = start + minSize + sentenceBoundaryIndex + 1;
+  const splitText = (txt, separatorIdx) => {
+    if (txt.length <= maxSize) return [txt];
+    
+    if (separatorIdx >= separators.length) {
+      // Hard fallback if all separators are exhausted
+      const chunks = [];
+      let start = 0;
+      while (start < txt.length) {
+        let end = start + maxSize;
+        chunks.push(txt.slice(start, end));
+        start = end - overlap;
+        if (start >= txt.length || end >= txt.length) break;
+      }
+      return chunks;
+    }
+    
+    const separator = separators[separatorIdx];
+    const parts = txt.split(separator);
+    const result = [];
+    
+    for (const part of parts) {
+      if (part.length <= maxSize) {
+        result.push(part);
       } else {
-        // Fallback to the last word boundary (space)
-        const wordBoundaryIndex = searchWindow.lastIndexOf(' ');
-        if (wordBoundaryIndex !== -1) {
-          end = start + minSize + wordBoundaryIndex;
-        }
+        result.push(...splitText(part, separatorIdx + 1));
       }
     }
     
-    const chunkText = normalizedText.slice(start, end).trim();
-    if (chunkText.length > 0) {
-      chunks.push(chunkText);
-    }
+    return result;
+  };
+  
+  const rawSplits = splitText(cleanedText, 0);
+  
+  const chunks = [];
+  let currentChunk = '';
+  
+  for (let i = 0; i < rawSplits.length; i++) {
+    const split = rawSplits[i];
+    if (!split) continue;
     
-    // Calculate the next start position
-    const nextStart = end - overlap;
-    
-    // Safety check to prevent infinite loops: if we are not moving forward, force progress
-    if (nextStart <= start) {
-      start = end;
+    if (!currentChunk) {
+      currentChunk = split;
     } else {
-      start = nextStart;
+      // Determine what separator we should use when joining
+      const joinStr = (currentChunk.endsWith('\n') || split.startsWith('\n')) ? '' : ' ';
+      
+      if (currentChunk.length + joinStr.length + split.length <= maxSize) {
+        currentChunk += joinStr + split;
+      } else {
+        chunks.push(currentChunk.trim());
+        
+        // Construct overlap by backtracking split pieces
+        let overlapText = '';
+        let j = i - 1;
+        while (j >= 0 && overlapText.length + rawSplits[j].length <= overlap) {
+          const sep = (rawSplits[j].endsWith('\n') || overlapText.startsWith('\n')) ? '' : ' ';
+          overlapText = rawSplits[j] + sep + overlapText;
+          j--;
+        }
+        
+        const nextJoinStr = (overlapText.endsWith('\n') || split.startsWith('\n')) ? '' : ' ';
+        currentChunk = (overlapText + nextJoinStr + split).slice(-maxSize);
+      }
     }
   }
   
-  return chunks;
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks.filter(c => c.length > 0);
 };

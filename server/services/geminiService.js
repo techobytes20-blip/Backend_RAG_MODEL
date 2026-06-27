@@ -66,14 +66,59 @@ const withRetry = async (fn, maxRetries = 3) => {
 };
 
 /**
- * Intelligently truncate and select context chunks.
+ * Intelligently formats context chunks, adding document name and page number headers.
  */
 const optimizeContext = (chunks) => {
-  // 1. Take only the top 3 most relevant chunks (Atlas returns them ordered by relevance)
-  const topChunks = chunks.slice(0, 5).map(chunk => chunk.text);
+  return chunks.map(chunk => {
+    const pageLabel = chunk.pageNumber ? ` (Page ${chunk.pageNumber})` : '';
+    return `[Source: ${chunk.filename}${pageLabel}]\n${chunk.text}`;
+  }).join('\n\n---\n\n');
+};
 
-  // 2. Join them safely
-  return topChunks.join('\n\n');
+/**
+ * Reformulates a conversational follow-up question into a search-optimized standalone question
+ * using the dialogue history.
+ * 
+ * @param {string} question - The user's follow-up question.
+ * @param {Array<Object>} history - The history of messages in the dialogue.
+ * @returns {Promise<string>} The rewritten standalone question.
+ */
+export const generateStandaloneQuery = async (question, history) => {
+  if (!history || !Array.isArray(history) || history.length === 0) {
+    return question;
+  }
+
+  try {
+    const genAI = getGenAI();
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: 'You are an expert search query reformulator. Your job is to take a dialogue history and a new follow-up question, and rewrite it into a single standalone search query. The standalone query should completely resolve references like "he", "she", "it", "they", "that", "those", etc. into actual context terms from the history. DO NOT answer the question. Output ONLY the rewritten standalone question.'
+    });
+
+    const conversationHistoryStr = history
+      .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n');
+
+    const prompt = `Dialogue History:
+${conversationHistoryStr}
+
+Follow-up Question: ${question}
+
+Standalone Query:`;
+
+    const result = await withRetry(() => withTimeout(model.generateContent(prompt), 10000), 2);
+    if (result && result.response) {
+      const text = result.response.text();
+      if (text && text.trim().length > 0) {
+        const rewritten = text.trim();
+        console.log(`[Query Rewriter] Original: "${question}" -> Rewritten Standalone: "${rewritten}"`);
+        return rewritten;
+      }
+    }
+  } catch (error) {
+    console.warn('[Query Rewriter Warning] Failed to rewrite query, falling back to original:', error.message);
+  }
+  return question;
 };
 
 /**
@@ -99,7 +144,7 @@ export const generateAnswer = async (question, retrievedChunks) => {
 
   const systemInstruction = `You are a cricket knowledge assistant.
 
-Answer using ONLY the provided context.
+Answer using ONLY the provided context. Do NOT include any source citations, file names, or page numbers in your response text (e.g., do not write things like "[Source: rules.pdf]" or mention document names). The sources will be shown separately to the user by the application.
 
 You may combine, compare, summarize, and synthesize information from multiple context sections to answer the user's question.
 
@@ -141,6 +186,12 @@ ${question}`;
         
         // Remove any markdown bolding symbols (**)
         finalAnswer = finalAnswer.replace(/\*\*/g, '');
+
+        // Strip any residual bracketed sources or page markers that the model might have output
+        finalAnswer = finalAnswer.replace(/\[\s*Source\s*:\s*[^\]]+\]/gi, '');
+        finalAnswer = finalAnswer.replace(/\[\s*Page\s*\d+\s*\]/gi, '');
+        // Clean up redundant whitespace or trailing punctuation issues caused by stripping
+        finalAnswer = finalAnswer.replace(/\s+/g, ' ').trim();
 
         const endTime = performance.now();
         console.log(`[Success] Answered in ${Math.round(endTime - startTime)}ms`);
