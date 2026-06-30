@@ -154,6 +154,8 @@ Do not use outside knowledge or make assumptions.
 
 Do not use markdown bolding (double asterisks like **) in your response. Present headings or labels as plain text followed by a colon (e.g., "Category: Batting" instead of "**Category:** Batting").
 
+Do NOT include a "Detailed Explanation" section in your response. Ensure each subheading starts on a new line so that after a full stop at the end of a section, the next subheading begins on the next line.
+
 If the required information is not present in the provided context, respond exactly:
 
 "I could not find this information in the uploaded documents."`;
@@ -190,8 +192,8 @@ ${question}`;
         // Strip any residual bracketed sources or page markers that the model might have output
         finalAnswer = finalAnswer.replace(/\[\s*Source\s*:\s*[^\]]+\]/gi, '');
         finalAnswer = finalAnswer.replace(/\[\s*Page\s*\d+\s*\]/gi, '');
-        // Clean up redundant whitespace or trailing punctuation issues caused by stripping
-        finalAnswer = finalAnswer.replace(/\s+/g, ' ').trim();
+        // Clean up redundant spaces but preserve newlines
+        finalAnswer = finalAnswer.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
 
         const endTime = performance.now();
         console.log(`[Success] Answered in ${Math.round(endTime - startTime)}ms`);
