@@ -166,7 +166,7 @@ ${contextString}
 Question:
 ${question}`;
 
-  const modelsToTry = ['gemini-2.5-flash','gemini-3.5-flash','gemini-3.1-pro-preview'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'];
   const genAI = getGenAI();
   let lastError = null;
 
@@ -185,13 +185,17 @@ ${question}`;
       if (result && result.response) {
         const text = result.response.text();
         let finalAnswer = text ? text.trim() : 'I could not find this information in the uploaded documents.';
-        
+
         // Remove any markdown bolding symbols (**)
         finalAnswer = finalAnswer.replace(/\*\*/g, '');
 
         // Strip any residual bracketed sources or page markers that the model might have output
         finalAnswer = finalAnswer.replace(/\[\s*Source\s*:\s*[^\]]+\]/gi, '');
         finalAnswer = finalAnswer.replace(/\[\s*Page\s*\d+\s*\]/gi, '');
+        
+        // Programmatically strip 'Detailed Explanation' since LLMs sometimes copy it from context ignoring negative constraints
+        finalAnswer = finalAnswer.replace(/\n*\s*Detailed Explanation:.*?(?=\n[A-Za-z ]+:|$)/gs, '');
+
         // Clean up redundant spaces but preserve newlines
         finalAnswer = finalAnswer.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
 
