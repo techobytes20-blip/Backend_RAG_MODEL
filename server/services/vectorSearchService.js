@@ -160,9 +160,9 @@ export const expandChunksContext = async (chunks) => {
       const minId = segment[0].chunkId;
       const maxId = segment[segment.length - 1].chunkId;
       
-      // Expand window: [minId - 1, maxId + 1]
-      const startId = Math.max(0, minId - 1);
-      const endId = maxId + 1;
+      // Expand window: [minId - 2, maxId + 3]
+      const startId = Math.max(0, minId - 2);
+      const endId = maxId + 3;
 
       // Query database for all chunks in this contiguous expanded range
       const dbChunks = await Chunk.find({
