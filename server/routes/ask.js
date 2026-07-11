@@ -3,12 +3,55 @@ import * as embeddingService from '../services/embeddingService.js';
 import * as vectorSearchService from '../services/vectorSearchService.js';
 import * as geminiService from '../services/geminiService.js';
 import { cacheManager } from '../utils/cacheManager.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
+import UserHistory from '../models/UserHistory.js';
+import Chunk from '../models/Chunk.js';
 
 const router = express.Router();
 
+// GET /ask/history endpoint
+router.get('/history', authMiddleware, async (req, res) => {
+  try {
+    const history = await UserHistory.find({ userId: req.user._id })
+      .sort({ timestamp: 1 }) // Chronological order
+      .lean();
+
+    // Group by sessionId in memory
+    const sessionsMap = {};
+    const legacySessionId = 'session_legacy';
+    
+    history.forEach(item => {
+      // If sessionId is missing, group under a fallback legacy session
+      const sId = item.sessionId || legacySessionId;
+      if (!sessionsMap[sId]) {
+        sessionsMap[sId] = {
+          sessionId: sId,
+          timestamp: item.timestamp,
+          firstQuestion: item.question,
+          messages: []
+        };
+      }
+      sessionsMap[sId].messages.push({
+        _id: item._id,
+        question: item.question,
+        answer: item.answer,
+        timestamp: item.timestamp
+      });
+    });
+
+    // Convert map to list and sort sessions by timestamp descending (newest session first)
+    const sessionsList = Object.values(sessionsMap).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    return res.status(200).json(sessionsList);
+  } catch (error) {
+    console.error('Error fetching chat history:', error);
+    return res.status(500).json({ error: `Failed to fetch chat history: ${error.message}` });
+  }
+});
+
 // POST /ask endpoint
-router.post('/', async (req, res) => {
-  const { question, history } = req.body || {};
+router.post('/', authMiddleware, async (req, res) => {
+  const { question, history, sessionId } = req.body || {};
 
   // Validate request
   if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -49,9 +92,18 @@ router.post('/', async (req, res) => {
       console.log('Expanding context window for reranked chunks...');
       const expandedChunks = await vectorSearchService.expandChunksContext(retrievedChunks);
 
-      // 6. Generate answer based on context using Gemini LLM
+      // 6. Generate answer based on context using Gemini LLM, returning a high-traffic fallback if rate limited
       console.log('Generating response with Gemini model...');
-      const answer = await geminiService.generateAnswer(standaloneQuestion, expandedChunks);
+      let answer;
+      try {
+        answer = await geminiService.generateAnswer(standaloneQuestion, expandedChunks);
+      } catch (error) {
+        if (error.message && error.message.includes('High traffic fallback triggered')) {
+          answer = 'I am currently experiencing high traffic and cannot process your request. Please try again in a few moments.';
+        } else {
+          throw error;
+        }
+      }
 
       // 7. Map sources from retrieved chunks (citing actual matched pages)
       const sources = retrievedChunks.map((chunk) => ({
@@ -66,20 +118,33 @@ router.post('/', async (req, res) => {
       };
     });
 
-    // 8. Send structured response
+    // 8. Track user search history
+    try {
+      let chunkIds = [];
+      if (result.sources && result.sources.length > 0) {
+        const queryMatches = result.sources.map(s => ({ filename: s.filename, chunkId: s.chunkId }));
+        const matchingChunks = await Chunk.find({ $or: queryMatches }, '_id').lean();
+        chunkIds = matchingChunks.map(c => c._id);
+      }
+
+      const historyItem = await UserHistory.create({
+        userId: req.user._id,
+        sessionId: sessionId || null,
+        question: question.trim(),
+        answer: result.answer,
+        chunks: chunkIds
+      });
+      console.log(`[History] Saved history for user: ${req.user._id} and query: "${question.trim()}"`);
+      result.historyId = historyItem._id;
+    } catch (dbError) {
+      console.error('[History Error] Failed to log user query to history:', dbError.message);
+    }
+
+    // 9. Send structured response
     return res.status(200).json(result);
 
   } catch (error) {
     console.error('Error in /ask route processing:', error);
-    
-    // Serve fallback message without caching it if generation failed due to traffic/quota
-    if (error.message && error.message.includes('High traffic fallback triggered')) {
-      return res.status(200).json({
-        answer: 'I am currently experiencing high traffic and cannot process your request. Please try again in a few moments.',
-        sources: []
-      });
-    }
-
     return res.status(500).json({ error: `Failed to answer the question: ${error.message}` });
   }
 });

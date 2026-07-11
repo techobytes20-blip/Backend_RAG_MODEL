@@ -3,7 +3,7 @@
   "info": {
     "title": "Cricket Knowledge RAG Chatbot API",
     "version": "1.0.0",
-    "description": "API documentation for the Cricket Knowledge RAG (Retrieval-Augmented Generation) Chatbot. This backend parses documents (PDF, DOCX, TXT), chunks them, embeds them with the Gemini API, stores them in MongoDB Atlas, and performs Vector Search to answer questions."
+    "description": "API documentation for the Cricket Knowledge RAG (Retrieval-Augmented Generation) Chatbot. This backend parses documents (PDF, DOCX, TXT), chunks them, embeds them with the Gemini API, stores them in MongoDB Atlas, performs Vector Search, manages phone authentication, and provides personalized quizzes with score points."
   },
   "servers": [
     {
@@ -11,11 +11,223 @@
       "description": "Local Development Server"
     }
   ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
   "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new user directly",
+        "description": "Registers a new phone number and name. No OTP required to register. Fails if user is already registered.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "+1234567890",
+                    "description": "User phone number in E.164 format."
+                  },
+                  "name": {
+                    "type": "string",
+                    "example": "Cricket Fan",
+                    "description": "User full name."
+                  }
+                },
+                "required": ["phoneNumber", "name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "User registered successfully. You can now login." },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "phoneNumber": { "type": "string" },
+                        "name": { "type": "string" },
+                        "cricPoints": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (e.g. user already registered or missing parameters)."
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Request login OTP for phone number",
+        "description": "Verifies that the phone number is registered, generates a mock OTP, logs it to console, and stores it for verification. Fails if user does not exist.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "+1234567890"
+                  }
+                },
+                "required": ["phoneNumber"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP generated successfully and logged to console.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "OTP generated and logged to backend console successfully."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "User is not registered, or invalid phone number."
+          }
+        }
+      }
+    },
+    "/auth/verify-otp": {
+      "post": {
+        "summary": "Verify OTP and complete login",
+        "description": "Verifies the 6-digit OTP generated for the phone number. Returns JWT token for authorization.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "+1234567890"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "example": "123456"
+                  }
+                },
+                "required": ["phoneNumber", "otp"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful. JWT token issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "example": "eyJhbGciOiJIUzI1NiIsInR5..."
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "phoneNumber": { "type": "string" },
+                        "name": { "type": "string" },
+                        "cricPoints": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or expired OTP."
+          }
+        }
+      }
+    },
+    "/auth/profile": {
+      "get": {
+        "summary": "Get authenticated user profile and quiz history",
+        "description": "Retrieves the user's information, cumulative Cric Points, and history of previous quiz attempts.",
+        "responses": {
+          "200": {
+            "description": "Profile data retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "phoneNumber": { "type": "string" },
+                        "name": { "type": "string" },
+                        "cricPoints": { "type": "integer" },
+                        "createdAt": { "type": "string", "format": "date-time" }
+                      }
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "attemptId": { "type": "string" },
+                          "quizId": { "type": "string" },
+                          "score": { "type": "integer" },
+                          "pointsEarned": { "type": "integer" },
+                          "completedAt": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized token."
+          }
+        }
+      }
+    },
     "/upload": {
       "post": {
         "summary": "Upload and index a Cricket document",
         "description": "Uploads a PDF, DOCX, or TXT file. The server extracts the raw text, splits it into chunks of 500-1000 characters (with 100 character overlap), generates 768-dimensional embeddings using Gemini, and saves them to MongoDB Atlas for vector search.",
+        "security": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -38,68 +250,62 @@
         },
         "responses": {
           "200": {
-            "description": "Document parsed, embedded, and indexed successfully.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "string",
-                      "example": "File uploaded, parsed, embedded, and indexed successfully."
-                    },
-                    "filename": {
-                      "type": "string",
-                      "example": "cricket_rules.pdf"
-                    },
-                    "chunksCount": {
-                      "type": "integer",
-                      "example": 14
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Document parsed, embedded, and indexed successfully."
           },
           "400": {
-            "description": "Bad Request (e.g. invalid file extension, empty file, or no file uploaded).",
+            "description": "Bad Request."
+          },
+          "500": {
+            "description": "Internal Server Error."
+          }
+        }
+      }
+    },
+    "/ask/history": {
+      "get": {
+        "summary": "Get authenticated user's chat history grouped by session",
+        "description": "Retrieves all previous Q&A interactions grouped under their respective sessionId, sorted descending by date.",
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved grouped chat sessions.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Invalid file type. Only PDF, DOCX, and TXT files are accepted."
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sessionId": { "type": "string", "example": "session_123" },
+                      "timestamp": { "type": "string", "format": "date-time" },
+                      "firstQuestion": { "type": "string", "example": "What is a googly?" },
+                      "messages": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "_id": { "type": "string" },
+                            "question": { "type": "string" },
+                            "answer": { "type": "string" },
+                            "timestamp": { "type": "string", "format": "date-time" }
+                          }
+                        }
+                      }
                     }
                   }
                 }
               }
             }
           },
-          "500": {
-            "description": "Internal Server Error (e.g. Gemini API failure or DB connection issues).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Failed to process uploaded file: Gemini API rate limit exceeded."
-                    }
-                  }
-                }
-              }
-            }
+          "401": {
+            "description": "Unauthorized token."
           }
         }
       }
     },
     "/ask": {
       "post": {
-        "summary": "Ask a cricket question",
-        "description": "Queries the vector database for the top 5 most relevant chunks using semantic search, constructs a retrieval-augmented context prompt, and generates a response from Gemini restricted to the uploaded content.",
+        "summary": "Ask a cricket question (Authenticated)",
+        "description": "Queries the vector database using semantic search, constructs context, generates a response from Gemini, and saves the interaction to the user's history under an optional sessionId.",
         "requestBody": {
           "required": true,
           "content": {
@@ -109,8 +315,22 @@
                 "properties": {
                   "question": {
                     "type": "string",
-                    "description": "The cricket question you want to ask.",
                     "example": "Why is a googly difficult to play?"
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "example": "session_123",
+                    "description": "Optional unique identifier for grouping questions into conversational threads."
+                  },
+                  "history": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": { "type": "string", "example": "user" },
+                        "content": { "type": "string", "example": "Hello" }
+                      }
+                    }
                   }
                 },
                 "required": [
@@ -122,29 +342,21 @@
         },
         "responses": {
           "200": {
-            "description": "RAG answer generated successfully.",
+            "description": "Answer generated successfully.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "answer": {
-                      "type": "string",
-                      "example": "A googly is difficult to play because it looks like a normal leg-break but spins in the opposite direction."
-                    },
+                    "answer": { "type": "string" },
+                    "historyId": { "type": "string", "example": "6a50bdf99f755..." },
                     "sources": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "filename": {
-                            "type": "string",
-                            "example": "cricket_rules.pdf"
-                          },
-                          "chunkId": {
-                            "type": "integer",
-                            "example": 3
-                          }
+                          "filename": { "type": "string" },
+                          "chunkId": { "type": "integer" }
                         }
                       }
                     }
@@ -153,32 +365,114 @@
               }
             }
           },
-          "400": {
-            "description": "Bad Request (e.g. missing question field).",
+          "401": {
+            "description": "Unauthorized."
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "summary": "List all uploaded files and chunk counts",
+        "description": "Queries MongoDB Atlas to list indexed documents with their chunk count.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "List of documents."
+          }
+        }
+      }
+    },
+    "/quiz/active": {
+      "get": {
+        "summary": "Get user's active personalized quiz",
+        "description": "Retrieves the active generated quiz or triggers batch generation of 10 new questions if user's ask history changed. Reuses cached context chunks.",
+        "responses": {
+          "200": {
+            "description": "Quiz retrieved successfully (answers omitted).",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "The 'question' field is required and must be a non-empty string."
-                    }
+                    "quizId": { "type": "string" },
+                    "questions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "questionText": { "type": "string" },
+                          "options": { "type": "array", "items": { "type": "string" } }
+                        }
+                      }
+                    },
+                    "cached": { "type": "boolean" }
                   }
                 }
               }
             }
           },
-          "500": {
-            "description": "Internal Server Error (e.g. Vector Search failure or LLM service failure).",
+          "400": {
+            "description": "Bad Request (e.g. user history empty)."
+          }
+        }
+      }
+    },
+    "/quiz/submit": {
+      "post": {
+        "summary": "Submit quiz answers and earn points",
+        "description": "Grades the submitted answers on the server side, calculates score (+5 per correct, -1 per wrong), updates cumulative Cric Points, and logs the attempt.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quizId": { "type": "string" },
+                  "answers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "questionId": { "type": "string" },
+                        "selectedOptionIndex": { "type": "integer", "minimum": 0, "maximum": 3 }
+                      }
+                    }
+                  }
+                },
+                "required": ["quizId", "answers"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quiz graded successfully.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Failed to answer the question: Vector Search Failure."
+                    "attemptId": { "type": "string" },
+                    "score": { "type": "integer" },
+                    "totalQuestions": { "type": "integer" },
+                    "pointsEarned": { "type": "integer" },
+                    "cumulativePoints": { "type": "integer" },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "questionId": { "type": "string" },
+                          "questionText": { "type": "string" },
+                          "options": { "type": "array", "items": { "type": "string" } },
+                          "selectedOptionIndex": { "type": "integer" },
+                          "correctOptionIndex": { "type": "integer" },
+                          "isCorrect": { "type": "boolean" },
+                          "explanation": { "type": "string" }
+                        }
+                      }
                     }
                   }
                 }
@@ -188,27 +482,47 @@
         }
       }
     },
-    "/documents": {
+    "/quiz/attempt/{attemptId}": {
       "get": {
-        "summary": "List all uploaded files and chunk counts",
-        "description": "Queries MongoDB Atlas using aggregation to group chunks by their originating filename, returning a unique list of indexed files with their total chunks.",
+        "summary": "Get details of a past quiz attempt",
+        "description": "Retrieves the user's detailed options, score, and corrections for a specific past quiz attempt ID.",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "description": "ID of the quiz attempt.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "List of indexed documents retrieved successfully.",
+            "description": "Detailed attempt details successfully retrieved.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "filename": {
-                        "type": "string",
-                        "example": "cricket_rules.pdf"
-                      },
-                      "chunkCount": {
-                        "type": "integer",
-                        "example": 14
+                  "type": "object",
+                  "properties": {
+                    "attemptId": { "type": "string" },
+                    "score": { "type": "integer" },
+                    "totalQuestions": { "type": "integer" },
+                    "pointsEarned": { "type": "integer" },
+                    "completedAt": { "type": "string", "format": "date-time" },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "questionId": { "type": "string" },
+                          "questionText": { "type": "string" },
+                          "options": { "type": "array", "items": { "type": "string" } },
+                          "selectedOptionIndex": { "type": "integer" },
+                          "correctOptionIndex": { "type": "integer" },
+                          "isCorrect": { "type": "boolean" },
+                          "explanation": { "type": "string" }
+                        }
                       }
                     }
                   }
@@ -216,23 +530,22 @@
               }
             }
           },
-          "500": {
-            "description": "Internal Server Error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "example": "Failed to fetch uploaded documents list: Database timeout."
-                    }
-                  }
-                }
-              }
-            }
+          "403": {
+            "description": "Forbidden (attempt belongs to another user)."
+          },
+          "404": {
+            "description": "Quiz attempt or associated content not found."
           }
         }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     }
   }

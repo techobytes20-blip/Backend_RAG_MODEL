@@ -9,6 +9,8 @@ import connectDB from './db.js';
 import uploadRouter from './routes/upload.js';
 import askRouter from './routes/ask.js';
 import documentsRouter from './routes/documents.js';
+import authRouter from './routes/auth.js';
+import quizRouter from './routes/quiz.js';
 
 // Resolve directory paths in ES module environment
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +42,8 @@ app.use((req, res, next) => {
 app.use('/upload', uploadRouter);
 app.use('/ask', askRouter);
 app.use('/documents', documentsRouter);
+app.use('/auth', authRouter);
+app.use('/quiz', quizRouter);
 
 // Register Swagger UI documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));

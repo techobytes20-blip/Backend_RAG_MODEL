@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import QueryCache from '../models/QueryCache.js';
+import QuizQuestionCache from '../models/QuizQuestionCache.js';
 import * as embeddingService from '../services/embeddingService.js';
 
 const cosineSimilarity = (vecA, vecB) => {
@@ -213,13 +214,87 @@ class CacheManager {
   }
 
   /**
-   * Clears both in-memory cache and MongoDB cached Q&As.
+   * Check if MCQ is cached for a specific question text.
+   * Uses both exact match and semantic match.
+   */
+  async getCachedMCQ(questionText) {
+    if (!questionText || typeof questionText !== 'string') return null;
+    const hashKey = this.generateHash(questionText.trim().toLowerCase());
+    
+    // 1. Exact match check
+    try {
+      const exactMatch = await QuizQuestionCache.findOne({ hash: hashKey });
+      if (exactMatch) {
+        console.log(`[MCQ Cache Hit] Exact match found for question: "${questionText}"`);
+        return exactMatch.mcq;
+      }
+    } catch (err) {
+      console.warn(`[MCQ Cache L2 Error] Exact match check failed: ${err.message}`);
+    }
+
+    // 2. Semantic match check using JS-based Cosine Similarity
+    try {
+      const queryEmbedding = await embeddingService.generateEmbedding(questionText);
+      const allCached = await QuizQuestionCache.find({}, 'question embedding mcq').limit(200);
+      if (allCached && allCached.length > 0) {
+        let bestMatch = null;
+        let bestScore = -1;
+        for (const entry of allCached) {
+          if (entry.embedding && entry.embedding.length > 0) {
+            const score = cosineSimilarity(queryEmbedding, entry.embedding);
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = entry;
+            }
+          }
+        }
+
+        if (bestMatch && bestScore >= 0.90) {
+          console.log(`[MCQ Cache Hit] Semantic match found (score ${bestScore.toFixed(4)}): "${bestMatch.question}" for query "${questionText}"`);
+          return bestMatch.mcq;
+        }
+      }
+    } catch (error) {
+      console.warn(`[MCQ Cache Warning] Semantic search failed: ${error.message}`);
+    }
+
+    return null;
+  }
+
+  /**
+   * Save a generated MCQ to QuizQuestionCache
+   */
+  async saveMCQToCache(questionText, mcq) {
+    try {
+      if (!questionText || !mcq) return;
+      const hashKey = this.generateHash(questionText.trim().toLowerCase());
+      const queryEmbedding = await embeddingService.generateEmbedding(questionText);
+
+      // Check if it already exists to avoid duplicate key errors
+      const exists = await QuizQuestionCache.findOne({ hash: hashKey });
+      if (!exists) {
+        await QuizQuestionCache.create({
+          hash: hashKey,
+          question: questionText,
+          embedding: queryEmbedding,
+          mcq: mcq
+        });
+        console.log(`[MCQ Cache Store] Saved MCQ in MongoDB for: "${questionText}"`);
+      }
+    } catch (dbError) {
+      console.warn(`[MCQ Cache Store Error] Failed to cache MCQ: ${dbError.message}`);
+    }
+  }
+
+  /**
+   * Clears both in-memory cache and MongoDB cached Q&As/MCQs.
    */
   async clear() {
     try {
       this.cache.clear();
       await QueryCache.deleteMany({});
-      console.log('[Cache Cleared] Cleared memory and MongoDB Q&A cache.');
+      await QuizQuestionCache.deleteMany({});
+      console.log('[Cache Cleared] Cleared memory, MongoDB Q&A, and MCQ cache.');
     } catch (error) {
       console.error('[Cache Clear Error] Failed to purge MongoDB cache:', error);
     }

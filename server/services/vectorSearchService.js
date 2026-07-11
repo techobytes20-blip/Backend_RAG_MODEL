@@ -160,15 +160,35 @@ export const expandChunksContext = async (chunks) => {
       const minId = segment[0].chunkId;
       const maxId = segment[segment.length - 1].chunkId;
       
-      // Expand window: [minId - 2, maxId + 3]
-      const startId = Math.max(0, minId - 2);
-      const endId = maxId + 3;
+      let dbChunks;
 
-      // Query database for all chunks in this contiguous expanded range
-      const dbChunks = await Chunk.find({
-        filename,
-        chunkId: { $gte: startId, $lte: endId }
-      }).sort({ chunkId: 1 });
+      // For PDFs, expand context to include the entire current page(s) plus the next page
+      if (filename.toLowerCase().endsWith('.pdf')) {
+        const segmentPageNumbers = segment
+          .map(c => c.pageNumber)
+          .filter(p => p !== null && p !== undefined);
+
+        if (segmentPageNumbers.length > 0) {
+          const minPage = Math.max(1, Math.min(...segmentPageNumbers) - 1);
+          const maxPage = Math.max(...segmentPageNumbers);
+          
+          console.log(`[Context Expansion] Fetching chunks for PDF pages ${minPage} to ${maxPage + 1}`);
+          dbChunks = await Chunk.find({
+            filename,
+            pageNumber: { $gte: minPage, $lte: maxPage + 1 }
+          }).sort({ chunkId: 1 });
+        }
+      }
+
+      // Fallback for non-PDFs or if page numbers are not available
+      if (!dbChunks || dbChunks.length === 0) {
+        const startId = Math.max(0, minId - 2);
+        const endId = maxId + 3;
+        dbChunks = await Chunk.find({
+          filename,
+          chunkId: { $gte: startId, $lte: endId }
+        }).sort({ chunkId: 1 });
+      }
 
       if (dbChunks && dbChunks.length > 0) {
         // Merge the texts
