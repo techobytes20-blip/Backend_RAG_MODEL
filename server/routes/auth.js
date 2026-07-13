@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import OtpSession from '../models/OtpSession.js';
 import QuizAttempt from '../models/QuizAttempt.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
-import { sendOtp } from '../services/twilioService.js';
+import { sendOtp } from '../services/twoFactorService.js';
 
 const router = express.Router();
 

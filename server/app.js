@@ -11,7 +11,7 @@ import askRouter from './routes/ask.js';
 import documentsRouter from './routes/documents.js';
 import authRouter from './routes/auth.js';
 import quizRouter from './routes/quiz.js';
-import { verifyTwilioConfig } from './services/twilioService.js';
+import { verifyTwoFactorConfig } from './services/twoFactorService.js';
 
 // Resolve directory paths in ES module environment
 const __filename = fileURLToPath(import.meta.url);
@@ -20,8 +20,8 @@ const __dirname = path.dirname(__filename);
 // Load environment variables from server/.env
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// Verify Twilio configuration now that environment variables are loaded
-verifyTwilioConfig();
+// Verify 2Factor configuration now that environment variables are loaded
+verifyTwoFactorConfig();
 
 // Load Swagger document
 const swaggerDocument = JSON.parse(
