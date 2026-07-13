@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import OtpSession from '../models/OtpSession.js';
 import QuizAttempt from '../models/QuizAttempt.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { sendOtp } from '../services/twilioService.js';
 
 const router = express.Router();
 
@@ -83,13 +84,16 @@ router.post('/login', async (req, res) => {
       otp
     });
 
+    // Send OTP using Twilio Service
+    await sendOtp(phoneNumber.trim(), otp);
+
     // Log for testing
     console.log(`==========================================`);
     console.log(` [OTP DEBUG] Phone: ${phoneNumber.trim()} | OTP: ${otp} `);
     console.log(`==========================================`);
 
     return res.status(200).json({
-      message: 'OTP generated and logged to backend console successfully.'
+      message: 'OTP sent successfully.'
     });
   } catch (error) {
     console.error('Error in login OTP request:', error);
