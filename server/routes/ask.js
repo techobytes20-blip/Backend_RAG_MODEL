@@ -80,8 +80,8 @@ router.post('/', authMiddleware, async (req, res) => {
         };
       }
 
-      // 4. Apply Keyword-Coverage Hybrid Reranking to select top 3 chunks
-      const retrievedChunks = vectorSearchService.rerankChunks(standaloneQuestion, candidateChunks, 3);
+      // 4. Apply Keyword-Coverage Hybrid Reranking to select top 5 chunks
+      const retrievedChunks = vectorSearchService.rerankChunks(standaloneQuestion, candidateChunks, 5);
 
       console.log("Reranked Matches:");
       retrievedChunks.forEach((chunk, index) => {

@@ -30,7 +30,7 @@ export const searchSimilar = async (queryVector, limit = 5) => {
           chunkId: 1,
           text: 1,
           pageNumber: 1,
-          score: { $meta: 'searchScore' } // Project similarity score
+          score: { $meta: 'vectorSearchScore' } // Project similarity score
         }
       }
     ];
@@ -60,14 +60,18 @@ export const rerankChunks = (question, chunks, limit = 5) => {
     'what', 'is', 'the', 'difference', 'between', 'and', 'compare', 'vs', 'versus', 
     'how', 'why', 'are', 'in', 'of', 'a', 'to', 'for', 'with', 'on', 'about', 'can', 
     'you', 'tell', 'me', 'who', 'when', 'where', 'which', 'do', 'does', 'did', 'cricket',
-    'player', 'match', 'team', 'run', 'wicket', 'ball', 'over', 'game', 'play'
+    'player', 'players', 'match', 'team', 'run', 'wicket', 'ball', 'over', 'game', 'play',
+    'from', 'terms', 'famous', 'example', 'examples', 'detail', 'details', 'explanation',
+    'definition', 'tip', 'tips', 'fact', 'facts', 'pro', 'matters', 'used', 'using'
   ]);
   
-  const keywords = question
+  const rawKeywords = question
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, '')
     .split(/\s+/)
     .filter(w => w.length > 2 && !stopWords.has(w));
+
+  const keywords = [...new Set(rawKeywords)];
 
   if (keywords.length === 0) {
     // If no unique keywords, return vector-sorted chunks
