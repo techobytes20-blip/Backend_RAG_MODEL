@@ -61,16 +61,29 @@ export const sendOtp = async (to, otp) => {
 
   const { accountSid, authToken, fromNumber } = getTwilioConfig();
 
+  // Handle configuration errors by falling back in development
   if (!accountSid || !authToken) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[Twilio Service Warning] Twilio credentials missing. Falling back to mock SMS flow. OTP: ${otp}`);
+      return { sid: 'mock_sms_sid_fallback', status: 'queued', mock: true };
+    }
     throw new Error('Twilio credentials (TWILIO_ACCOUNT_SID / Account_SID and TWILIO_AUTH_TOKEN / Auth_token) are not set in the environment variables.');
   }
 
   if (!fromNumber) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[Twilio Service Warning] Twilio From number missing. Falling back to mock SMS flow. OTP: ${otp}`);
+      return { sid: 'mock_sms_sid_fallback', status: 'queued', mock: true };
+    }
     throw new Error('Twilio from phone number (TWILIO_PHONE_NUMBER / TWILIO_FROM_NUMBER) is not set in the environment variables.');
   }
 
   const activeClient = getClient();
   if (!activeClient) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[Twilio Service Warning] Twilio client initialization failed. Falling back to mock SMS flow. OTP: ${otp}`);
+      return { sid: 'mock_sms_sid_fallback', status: 'queued', mock: true };
+    }
     throw new Error('Failed to initialize Twilio client. Please check your credentials.');
   }
 
@@ -84,7 +97,14 @@ export const sendOtp = async (to, otp) => {
     console.log(`[Twilio Service] SMS sent successfully. Message SID: ${message.sid}`);
     return message;
   } catch (error) {
-    console.error(`[Twilio Service] Failed to send SMS to ${formattedTo}:`, error);
+    console.error(`[Twilio Service] Failed to send SMS to ${formattedTo}:`, error.message);
+
+    // Fallback to mock SMS flow in development mode so testing/login is not blocked
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[Twilio Service Warning] Falling back to mock SMS flow in development mode. OTP: ${otp}`);
+      return { sid: 'mock_sms_sid_fallback', status: 'queued', mock: true };
+    }
+
     throw error;
   }
 };
