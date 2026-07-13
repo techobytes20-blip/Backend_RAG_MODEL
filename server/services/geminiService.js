@@ -191,7 +191,7 @@ ${contextString}
 Question:
 ${question}`;
 
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-1.5-pro'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-1.5-pro'];
   const genAI = getGenAI();
   let lastError = null;
 
@@ -241,7 +241,7 @@ ${question}`;
  * @param {Array<Object>} historyItems - History items containing { question, answer }.
  * @returns {Promise<Array<Object>>} Array of MCQs.
  */
-export const generateQuizQuestionsForHistory = async (chunks, historyItems) => {
+export const generateQuizQuestionsForHistory = async (chunks, historyItems, excludeQuestions = []) => {
   if (!Array.isArray(chunks) || chunks.length === 0) {
     throw new Error('Context chunks are required.');
   }
@@ -256,14 +256,21 @@ Question Asked By User: ${item.question}
 Correct Answer Provided By System: ${item.answer}`;
   }).join('\n\n');
 
+  let exclusionRules = '';
+  if (Array.isArray(excludeQuestions) && excludeQuestions.length > 0) {
+    exclusionRules = `\n- CRITICAL EXCLUSION: Do NOT generate questions that are identical or highly similar to any of the following previously generated questions:\n${excludeQuestions.map(q => `  * "${q}"`).join('\n')}\n`;
+  }
+
   const systemInstruction = `You are a cricket trivia and quiz generator.
 
-For each of the user's previously asked questions in the provided "User History", you must generate exactly one multiple-choice question (MCQ).
-The field "questionText" in the generated MCQ MUST be identical to the user's question from the history.
-Use the corresponding answer and the provided context to create 4 options, identifying the correct option, and writing a brief, helpful explanation of why the correct option is right.
+For each history item in the provided "User History", you must generate exactly one multiple-choice question (MCQ) testing the concept from that item.
+
+Instead of copying the user's asked question or term verbatim (which is often short, vague, or grammatically incomplete), you must formulate a complete, professionally worded, and grammatically correct quiz question that tests the user's understanding of the concept/topic discussed in that history item.
+For example, if the history item question is "arm ball", do not use "arm ball" as the question text. Instead, formulate a question like: "Which type of delivery is defined as a finger spinner's delivery that goes straight on with the arm, without spinning?"
 
 For each question:
-- The questionText MUST match the user's question.
+- The questionText MUST be a high-quality, professional, and complete question rephrased from the history item's concept. It must NOT be identical to the user's query if the user's query is a simple term or incomplete question.${exclusionRules}
+- The originalQuestion MUST match the exact text of the user's question from the history item.
 - There must be exactly 4 options.
 - Only one option (the correct answer) must be correct.
 - The other three options must be plausible but incorrect distractors.
@@ -273,7 +280,8 @@ For each question:
 You MUST respond with a valid JSON array matching this structure:
 [
   {
-    "questionText": "User's exact question from history...",
+    "originalQuestion": "User's exact question/term from history...",
+    "questionText": "The rephrased, high-quality, complete question...",
     "options": ["Option A", "Option B", "Option C", "Option D"],
     "correctOptionIndex": 0, // Integer 0 to 3 matching the correct option in the options array
     "explanation": "Explanation here..."
@@ -314,6 +322,7 @@ Generate the MCQs in the required JSON format. You MUST generate exactly ${histo
           if (Array.isArray(parsedQuestions) && parsedQuestions.length > 0) {
             console.log(`[Success] Successfully generated ${parsedQuestions.length} quiz questions for history using ${modelName}`);
             return parsedQuestions.map(q => ({
+              originalQuestion: q.originalQuestion ? q.originalQuestion.replace(/\*\*/g, '') : '',
               questionText: q.questionText.replace(/\*\*/g, ''),
               options: q.options.map(opt => opt.replace(/\*\*/g, '')),
               correctOptionIndex: Number(q.correctOptionIndex),
@@ -339,7 +348,7 @@ Generate the MCQs in the required JSON format. You MUST generate exactly ${histo
  * @param {number} count - Number of questions to generate.
  * @returns {Promise<Array<Object>>} Array of MCQs.
  */
-export const generateQuizQuestionsFromPDF = async (chunks, count) => {
+export const generateQuizQuestionsFromPDF = async (chunks, count, excludeQuestions = []) => {
   if (!Array.isArray(chunks) || chunks.length === 0) {
     throw new Error('Context chunks are required.');
   }
@@ -349,12 +358,17 @@ export const generateQuizQuestionsFromPDF = async (chunks, count) => {
 
   const contextString = optimizeContext(chunks);
 
+  let exclusionRules = '';
+  if (Array.isArray(excludeQuestions) && excludeQuestions.length > 0) {
+    exclusionRules = `\n- CRITICAL EXCLUSION: Do NOT generate questions that are identical or highly similar to any of the following previously generated questions:\n${excludeQuestions.map(q => `  * "${q}"`).join('\n')}\n`;
+  }
+
   const systemInstruction = `You are a cricket trivia and quiz generator.
 
 Generate exactly ${count} multiple-choice questions (MCQs) based strictly on the provided context chunks.
 
 For each question:
-- The question must be answerable using only the provided context.
+- The question must be answerable using only the provided context.${exclusionRules}
 - There must be exactly 4 options.
 - Only one option must be correct.
 - Provide a brief, helpful explanation explaining why the correct option is right based on the context.

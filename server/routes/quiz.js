@@ -14,6 +14,24 @@ const router = express.Router();
 // Retrieves or generates the user's active personalized quiz (always 10 questions)
 router.get('/active', authMiddleware, async (req, res) => {
   try {
+    // Fetch all question texts this user has already attempted across all past attempts
+    const attemptedQuizIds = await QuizAttempt.find({ userId: req.user._id }).distinct('quizId');
+    const attemptedQuizzes = await Quiz.find(
+      { _id: { $in: attemptedQuizIds } },
+      { 'questions.questionText': 1 }
+    ).lean();
+
+    const attemptedQuestionTexts = new Set();
+    for (const q of attemptedQuizzes) {
+      if (q.questions) {
+        for (const quest of q.questions) {
+          if (quest.questionText) {
+            attemptedQuestionTexts.add(quest.questionText.trim().toLowerCase());
+          }
+        }
+      }
+    }
+
     // 1. Fetch user's recent history (up to last 10 entries)
     const recentHistory = await UserHistory.find({ userId: req.user._id })
       .sort({ timestamp: -1 })
@@ -37,7 +55,7 @@ router.get('/active', authMiddleware, async (req, res) => {
       }
     }
 
-    // Fill up to 10 questions using global history (other users)
+    // Fill up to 10 questions using global history (other users), avoiding already attempted ones
     if (quizSourceQuestions.length < 10) {
       const needed = 10 - quizSourceQuestions.length;
       const globalHistory = await UserHistory.find({
@@ -45,12 +63,13 @@ router.get('/active', authMiddleware, async (req, res) => {
         question: { $nin: Array.from(seenQuestions) }
       })
       .sort({ timestamp: -1 })
-      .limit(needed)
+      .limit(needed * 5)
       .lean();
 
       for (const item of globalHistory) {
+        if (quizSourceQuestions.length >= 10) break;
         const qNorm = item.question.trim().toLowerCase();
-        if (!seenQuestions.has(qNorm)) {
+        if (!seenQuestions.has(qNorm) && !attemptedQuestionTexts.has(qNorm)) {
           seenQuestions.add(qNorm);
           quizSourceQuestions.push({
             question: item.question.trim(),
@@ -62,18 +81,21 @@ router.get('/active', authMiddleware, async (req, res) => {
       }
     }
 
-    // Fill up to 10 using general cached MCQs
+    // Fill up to 10 using general cached MCQs, avoiding already attempted ones
     if (quizSourceQuestions.length < 10) {
       const needed = 10 - quizSourceQuestions.length;
       const cachedMCQs = await QuizQuestionCache.find({
         question: { $nin: Array.from(seenQuestions) }
       })
-      .limit(needed)
+      .limit(needed * 5)
       .lean();
 
       for (const item of cachedMCQs) {
+        if (quizSourceQuestions.length >= 10) break;
         const qNorm = item.question.trim().toLowerCase();
-        if (!seenQuestions.has(qNorm)) {
+        const mcqTextNorm = item.mcq && item.mcq.questionText ? item.mcq.questionText.trim().toLowerCase() : '';
+        
+        if (!seenQuestions.has(qNorm) && !attemptedQuestionTexts.has(qNorm) && !attemptedQuestionTexts.has(mcqTextNorm)) {
           seenQuestions.add(qNorm);
           quizSourceQuestions.push({
             question: item.question.trim(),
@@ -208,13 +230,16 @@ router.get('/active', authMiddleware, async (req, res) => {
     ];
 
     try {
-      // 1. Check MCQ Cache for history questions
+      // 1. Check MCQ Cache for history questions, avoiding already attempted ones
       for (const item of quizSourceQuestions) {
         if (!item.isPreGeneratedMCQ) {
           const cached = await cacheManager.getCachedMCQ(item.question);
           if (cached) {
-            item.isPreGeneratedMCQ = true;
-            item.mcq = cached;
+            const mcqTextNorm = cached.questionText ? cached.questionText.trim().toLowerCase() : '';
+            if (!attemptedQuestionTexts.has(mcqTextNorm)) {
+              item.isPreGeneratedMCQ = true;
+              item.mcq = cached;
+            }
           }
         }
       }
@@ -223,17 +248,21 @@ router.get('/active', authMiddleware, async (req, res) => {
 
       let generatedHistoryMCQs = [];
       if (historyMisses.length > 0) {
-        generatedHistoryMCQs = await geminiService.generateQuizQuestionsForHistory(chunks, historyMisses);
-        for (const mcq of generatedHistoryMCQs) {
-          const match = historyMisses.find(m => m.question.trim().toLowerCase() === mcq.questionText.trim().toLowerCase());
-          const key = match ? match.question : mcq.questionText;
-          await cacheManager.saveMCQToCache(key, mcq);
+        const rawMCQs = await geminiService.generateQuizQuestionsForHistory(chunks, historyMisses, Array.from(attemptedQuestionTexts));
+        for (const mcq of rawMCQs) {
+          const match = historyMisses.find(m => 
+            m.question.trim().toLowerCase() === (mcq.originalQuestion || '').trim().toLowerCase()
+          );
+          const key = match ? match.question : (mcq.originalQuestion || mcq.questionText);
+          const { originalQuestion, ...cleanMcq } = mcq;
+          await cacheManager.saveMCQToCache(key, cleanMcq);
+          generatedHistoryMCQs.push(cleanMcq);
         }
       }
 
       let generatedPDFMCQs = [];
       if (numToGenerateFromPDF > 0) {
-        generatedPDFMCQs = await geminiService.generateQuizQuestionsFromPDF(chunks, numToGenerateFromPDF);
+        generatedPDFMCQs = await geminiService.generateQuizQuestionsFromPDF(chunks, numToGenerateFromPDF, Array.from(attemptedQuestionTexts));
         for (const mcq of generatedPDFMCQs) {
           await cacheManager.saveMCQToCache(mcq.questionText, mcq);
         }
@@ -265,7 +294,8 @@ router.get('/active', authMiddleware, async (req, res) => {
       for (const fallback of premiumFallbackQuestions) {
         if (finalQuestions.length >= 10) break;
         const isDuplicate = finalQuestions.some(q => q.questionText.trim().toLowerCase() === fallback.questionText.trim().toLowerCase());
-        if (!isDuplicate) {
+        const isAttempted = attemptedQuestionTexts.has(fallback.questionText.trim().toLowerCase());
+        if (!isDuplicate && !isAttempted) {
           finalQuestions.push(fallback);
         }
       }
@@ -368,6 +398,10 @@ router.post('/submit', authMiddleware, async (req, res) => {
     // Update cumulative Cric Points on the user document (ensure it does not fall below 0)
     req.user.cricPoints = Math.max(0, req.user.cricPoints + pointsEarned);
     await req.user.save();
+
+    // Deactivate the quiz since it has been submitted/attempted
+    quiz.isActive = false;
+    await quiz.save();
 
     return res.status(200).json({
       attemptId: attempt._id,
