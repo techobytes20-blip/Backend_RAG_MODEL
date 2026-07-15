@@ -331,7 +331,7 @@ router.get('/active', authMiddleware, async (req, res) => {
 });
 
 // POST /quiz/submit
-// Grades the quiz submission, records the attempt, and updates the user's cric points
+// Grades the quiz submission, records the attempt, and updates the user's cric coins
 router.post('/submit', authMiddleware, async (req, res) => {
   const { quizId, answers } = req.body || {};
 
@@ -395,8 +395,8 @@ router.post('/submit', authMiddleware, async (req, res) => {
       completedAt: new Date()
     });
 
-    // Update cumulative Cric Points on the user document (ensure it does not fall below 0)
-    req.user.cricPoints = Math.max(0, req.user.cricPoints + pointsEarned);
+    // Update cumulative Cric Coins on the user document (ensure it does not fall below 0)
+    req.user.cricCoins = Math.max(0, (req.user.cricCoins || 0) + pointsEarned);
     await req.user.save();
 
     // Deactivate the quiz since it has been submitted/attempted
@@ -408,7 +408,7 @@ router.post('/submit', authMiddleware, async (req, res) => {
       score: correctAnswersCount,
       totalQuestions: quiz.questions.length,
       pointsEarned,
-      cumulativePoints: req.user.cricPoints,
+      cumulativePoints: req.user.cricCoins,
       results: evaluatedAnswers
     });
 

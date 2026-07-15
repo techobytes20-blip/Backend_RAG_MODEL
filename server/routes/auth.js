@@ -47,7 +47,7 @@ router.post('/register', async (req, res) => {
         id: user._id,
         phoneNumber: user.phoneNumber,
         name: user.name,
-        cricPoints: user.cricPoints
+        cricCoins: user.cricCoins
       }
     });
   } catch (error) {
@@ -147,7 +147,7 @@ router.post('/verify-otp', async (req, res) => {
         id: user._id,
         phoneNumber: user.phoneNumber,
         name: user.name,
-        cricPoints: user.cricPoints
+        cricCoins: user.cricCoins
       }
     });
   } catch (error) {
@@ -169,7 +169,7 @@ router.get('/profile', authMiddleware, async (req, res) => {
         id: req.user._id,
         phoneNumber: req.user.phoneNumber,
         name: req.user.name,
-        cricPoints: req.user.cricPoints,
+        cricCoins: req.user.cricCoins,
         createdAt: req.user.createdAt
       },
       attempts
