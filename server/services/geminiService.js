@@ -142,48 +142,72 @@ export const generateAnswer = async (question, retrievedChunks) => {
   requestCount++;
   const startTime = performance.now();
 
-  const systemInstruction = `Follow these strict output rules:
+  const systemInstruction = `You are an expert cricket assistant.
 
-1. Writing Style:
-Write like a knowledgeable cricket coach in a natural, engaging, and conversational tone.
+Answer ONLY from the provided context. Never use outside knowledge or invent facts.
 
-2. No Raw Labels:
-Never output labels or headings from the source documents such as "Definition", "Detailed Explanation", "Why It Matters", "When It Is Used", "Famous Examples", "Pro Tip", or "Fun Fact". Instead, naturally weave this information into the response.
+First determine the query type internally (do NOT output the words "Query Type" or anything similar in your response).
 
-3. Summarize & Paraphrase:
-Do not copy text from the document. Paraphrase while preserving the original meaning.
+1. If the query is about a cricket concept, technique, shot, rule, bowling style, fielding position, dismissal, equipment, or skill, return a structured response using only the fields available in the context:
 
-4. Include Every Available Detail:
-If the retrieved context contains any of the following, include them naturally in the answer whenever relevant:
-- Definition
-- Explanation
-- Why it matters
-- When it is used
-- Famous player examples
-- Practical tips
-- Interesting or fun facts
+Title:
+Category:
+Definition:
+Why It Matters:
+When It Is Used:
+Famous Examples:
+Pro Tip:
+Fun Fact:
 
-Do not omit these details simply to make the answer shorter.
+Do not include empty sections. Do NOT include any extra fields like "Detailed Explanation:" or "Explanation:". Stick strictly to the fields listed above.
 
-5. Natural Flow:
-Combine all available information into one smooth explanation. Famous player examples, practical tips, and fun facts should feel like part of the conversation instead of separate sections.
+2. If the query is about a player, match, tournament, record, statistic, historical event, milestone, award, or any factual question, do NOT use the above template. Instead, present the answer starting with ONLY the direct, simple answer on the first line (e.g. the player's name, team name, date, or number/statistic, without any conversational introduction or summary sentence). Follow this with a blank line, and then list other relevant fields/attributes available in the context. Format each field name on its own line, followed by its value on the next line, with a blank line separating the fields. Do not force unnecessary or empty fields. Do NOT include any "Explanation:" field.
 
-6. Response Length:
-Normally answer in 4–8 sentences.
-If the topic contains useful examples, tips, or fun facts, expand the answer as needed while remaining concise and avoiding repetition.
+Examples of Type 2 factual query responses:
 
-7. Formatting:
-Do not use *, **, bullet points, markdown, headings, labels, or numbered lists.
-Return plain text only.
+Example 1:
+Query: Who scored the first Test century?
+Response:
+Charles Bannerman
 
-8. Strict Context Adherence:
-Never invent facts or add information that is not supported by the provided context.
+Team:
+Australia
 
-9. Fallback:
-If the required information is not present in the provided context, respond exactly with:
-"I couldn't find information about this in the uploaded documents."
+Match:
+Australia vs England
 
-10. Never include source citations, file names, page numbers, or references in the response.`;
+Year:
+1877
+
+Achievement:
+Scored 165 retired hurt, becoming the first player to score a century in Test cricket.
+
+Significance:
+This was the first century in Test cricket history.
+
+Example 2:
+Query: Who won the 2011 Cricket World Cup?
+Response:
+India
+
+Captain:
+MS Dhoni
+
+Final:
+India defeated Sri Lanka by 6 wickets.
+
+Venue:
+Wankhede Stadium, Mumbai
+
+Significance:
+India won their second Cricket World Cup title.
+
+Keep responses clear, concise, and well-organized. Preserve all names, dates, scores, statistics, and facts exactly as provided in the context.
+
+Do not include citations, document names, page numbers, or references.
+
+If the answer is not present in the provided context, respond exactly:
+"I couldn't find information about this in the uploaded documents."`;
 
   const prompt = `Context:
 ${contextString}
@@ -191,7 +215,7 @@ ${contextString}
 Question:
 ${question}`;
 
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-1.5-pro'];
+  const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro'];
   const genAI = getGenAI();
   let lastError = null;
 
@@ -296,7 +320,7 @@ ${historyString}
 
 Generate the MCQs in the required JSON format. You MUST generate exactly ${historyItems.length} questions, one for each question in the User History:`;
 
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-1.5-pro'];
+  const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro'];
   const genAI = getGenAI();
   let lastError = null;
 
@@ -389,7 +413,7 @@ ${contextString}
 
 Generate the ${count} MCQs in the required JSON format:`;
 
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-1.5-pro'];
+  const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro'];
   const genAI = getGenAI();
   let lastError = null;
 
@@ -430,4 +454,151 @@ Generate the ${count} MCQs in the required JSON format:`;
 
   console.error(`[Fallback] All models failed for PDF quiz generation. Error:`, lastError?.message);
   throw new Error(`Failed to generate PDF quiz: ${lastError ? lastError.message : 'Unknown error'}`);
+};
+
+/**
+ * Classifies if a question is related to the sport of cricket.
+ * 
+ * @param {string} question - The query to check.
+ * @returns {Promise<boolean>}
+ */
+export const isCricketRelated = async (question) => {
+  if (!question || typeof question !== 'string') return false;
+
+  // Lightweight keyword match as first line of defense or fallback
+  const CRICKET_KEYWORDS = [
+    'cricket', 'batsman', 'bowler', 'wicket', 'dhoni', 'kohli', 'tendulkar', 'ipl',
+    'odi', 't20', 'test match', 'bcci', 'icc', 'pitch', 'umpires', 'crease', 'seamer',
+    'spinner', 'leg spin', 'off spin', 'googlies', 'yorker', 'bouncer', 'leg stump',
+    'off stump', 'middle stump', 'bails', 'boundary', 'sixer', 'fours', 'maiden over',
+    'duckworth lewis', 'dls method', 'cricketer',
+    // Additional common cricket terms/shots/delivery types
+    'arm ball', 'flick', 'lofted drive', 'cover drive', 'square cut', 'pull shot', 
+    'hook shot', 'sweep shot', 'reverse sweep', 'helicopter shot', 'straight drive', 
+    'on drive', 'off drive', 'glide', 'paddle sweep', 'slog sweep', 'switch hit',
+    'googly', 'doosra', 'carrom ball', 'flipper', 'slider', 'topspinner', 'off break', 
+    'leg break', 'in-swinger', 'out-swinger', 'reverse swing', 'cutter', 'off cutter', 
+    'leg cutter', 'slower ball', 'knuckle ball', 'chinaman',
+    'slip', 'gully', 'point', 'cover', 'mid-off', 'mid-on', 'mid-wicket', 'square leg', 
+    'fine leg', 'third man', 'deep cover', 'long-off', 'long-on', 'cow corner', 
+    'silly point', 'short leg', 'batting', 'bowling', 'fielding', 'dismissal', 
+    'lbw', 'run out', 'stumped', 'caught', 'bowled', 'hit wicket', 'byes', 'leg byes', 
+    'wides', 'no ball', 'free hit', 'powerplay', 'super over', 'stadium', 'ashes',
+    // Newly added broader keywords
+    'world cup', 'test cricket', 'swing', 'spin', 'fast bowler', 'pace',
+    'champions trophy', 'series', 'inning', 'innings', 'century', 'fifty', 'hat-trick'
+  ];
+
+  const questionLower = question.toLowerCase();
+  const hasKeyword = CRICKET_KEYWORDS.some(keyword => questionLower.includes(keyword));
+
+  const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro'];
+  const genAI = getGenAI();
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: 'You are a sports classifier. Analyze the user query and determine if it is related to cricket (the sport). This includes cricket rules, players, matches, history, terminology, teams, stadiums, leagues (like IPL, BBL), and tournaments. Output ONLY the JSON string {"isCricketRelated": true} or {"isCricketRelated": false}. Do not output any markdown code blocks, formatting, or extra text.'
+      });
+
+      const result = await withRetry(() => withTimeout(model.generateContent(`Query: "${question}"`), 5000), 2);
+      if (result && result.response) {
+        const text = result.response.text();
+        const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          if (typeof parsed.isCricketRelated === 'boolean') {
+            return parsed.isCricketRelated;
+          }
+        } catch (parseError) {
+          // If the model just outputs true/false
+          if (cleaned.toLowerCase() === 'true') return true;
+          if (cleaned.toLowerCase() === 'false') return false;
+        }
+      }
+    } catch (error) {
+      console.warn(`[Cricket Classifier Warning] Model ${modelName} failed:`, error.message);
+      lastError = error;
+    }
+  }
+
+  // If all models fail and we can't confidently classify it via keywords, throw a high traffic error.
+  if (lastError) {
+    if (hasKeyword) return true; // Let downstream operations hit the rate limit and handle it naturally
+    console.error('[Cricket Classifier Error] API failed and keyword fallback was negative. Throwing high traffic error.');
+    throw new Error('high traffic: ' + lastError.message);
+  }
+
+  return hasKeyword;
+};
+
+/**
+ * Answers a query using Gemini's built-in Google Search grounding.
+ * 
+ * @param {string} question - The query to search and answer.
+ * @returns {Promise<Object>} An object containing the answer, sources, and isWebSearch flag.
+ */
+export const answerWithWebSearch = async (question) => {
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest'];
+  const genAI = getGenAI();
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: 'You are a cricket expert. Use the Google Search tool to find up-to-date and accurate information about the user\'s query. Provide a natural, detailed, and engaging response as a plain text output. Do not format with markdown bolding or lists unless necessary, keep it clean and conversational.'
+      });
+
+      const result = await withRetry(() => withTimeout(model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        tools: [{ googleSearch: {} }]
+      }), 20000), 2);
+
+      if (result && result.response) {
+        const text = result.response.text();
+
+        // Extract search grounding sources if available
+        let sources = [];
+        const candidate = result.response.candidates?.[0];
+        const groundingMetadata = candidate?.groundingMetadata;
+        if (groundingMetadata && groundingMetadata.groundingChunks) {
+          sources = groundingMetadata.groundingChunks
+            .map(chunk => {
+              if (chunk.web?.uri) {
+                return {
+                  title: chunk.web.title || 'Web Source',
+                  url: chunk.web.uri
+                };
+              }
+              return null;
+            })
+            .filter(Boolean);
+        }
+
+        // De-duplicate sources by URL
+        const uniqueSourcesMap = {};
+        sources.forEach(src => {
+          if (src.url) {
+            uniqueSourcesMap[src.url] = src;
+          }
+        });
+        const uniqueSources = Object.values(uniqueSourcesMap);
+
+        return {
+          answer: text ? text.trim() : "I'm sorry, I couldn't find an answer using web search.",
+          sources: uniqueSources,
+          isWebSearch: true
+        };
+      }
+    } catch (error) {
+      console.warn(`[Web Search Warning] Model ${modelName} failed:`, error.message);
+      lastError = error;
+    }
+  }
+
+  console.error('[Web Search Error] All retries exhausted across all models. Error:', lastError?.message);
+  throw new Error('All retries exhausted. High traffic fallback triggered.');
 };

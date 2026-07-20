@@ -17,6 +17,51 @@ const cosineSimilarity = (vecA, vecB) => {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
+const getKeywords = (text) => {
+  const stopWords = new Set([
+    'what', 'is', 'the', 'difference', 'between', 'and', 'compare', 'vs', 'versus', 
+    'how', 'why', 'are', 'in', 'of', 'a', 'to', 'for', 'with', 'on', 'about', 'can', 
+    'you', 'tell', 'me', 'who', 'when', 'where', 'which', 'do', 'does', 'did', 'cricket',
+    'player', 'players', 'match', 'team', 'run', 'wicket', 'ball', 'over', 'game', 'play',
+    'from', 'terms', 'famous', 'example', 'examples', 'detail', 'details', 'explanation',
+    'definition', 'tip', 'tips', 'fact', 'facts', 'pro', 'matters', 'used', 'using'
+  ]);
+  
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.has(w));
+    
+  return new Set(words);
+};
+
+const keywordOverlap = (textA, textB) => {
+  const keysA = getKeywords(textA);
+  const keysB = getKeywords(textB);
+  
+  if (keysA.size === 0 || keysB.size === 0) return 0;
+  
+  let intersectionCount = 0;
+  keysA.forEach(k => {
+    if (keysB.has(k)) intersectionCount++;
+  });
+  
+  const unionSize = new Set([...keysA, ...keysB]).size;
+  return intersectionCount / unionSize;
+};
+
+const isCacheHit = (query, cachedQuestion, score, baseThreshold) => {
+  if (score >= baseThreshold) return true;
+  // If score is slightly below threshold, allow hit if keyword overlap is high
+  const overlap = keywordOverlap(query, cachedQuestion);
+  if (score >= 0.75 && overlap >= 0.8) {
+    console.log(`[Cache Hybrid Boost] Boosting cache score ${score.toFixed(4)} to hit due to high keyword overlap (${(overlap * 100).toFixed(1)}%) between "${query}" and "${cachedQuestion}"`);
+    return true;
+  }
+  return false;
+};
+
 class CacheManager {
   constructor(maxSize = 1000) {
     this.cache = new Map();
@@ -114,7 +159,7 @@ class CacheManager {
           if (results && results.length > 0) {
             const match = results[0];
             // Threshold of 0.95 search score corresponds to high cosine similarity
-            if (match.score >= 0.95) {
+            if (isCacheHit(key, match.question, match.score, 0.95)) {
               console.log(`[Cache L2 Hit] Semantic match found with Atlas search (score ${match.score.toFixed(4)}): "${match.question}"`);
               const result = {
                 answer: match.answer,
@@ -147,7 +192,7 @@ class CacheManager {
                 }
               }
 
-              if (bestMatch && bestScore >= 0.90) {
+              if (bestMatch && isCacheHit(key, bestMatch.question, bestScore, 0.90)) {
                 console.log(`[Cache L2 Hit] Semantic match found with JS similarity (score ${bestScore.toFixed(4)}): "${bestMatch.question}"`);
                 const result = {
                   answer: bestMatch.answer,
@@ -170,12 +215,16 @@ class CacheManager {
         // C. Cache Miss: Execute the fetch function (RAG pipeline + Gemini LLM)
         const result = await fetchFunction();
 
+        const isFallbackMsg = result && result.answer && result.answer.includes("I can only assist with cricket-related queries.");
+
         // D. Save to L1 memory cache
-        this.updateMemoryCache(hashKey, result);
+        if (!isFallbackMsg) {
+          this.updateMemoryCache(hashKey, result);
+        }
 
         // E. Save to L2 MongoDB cache
         try {
-          if (result && result.answer) {
+          if (result && result.answer && !isFallbackMsg) {
             // Generate embedding if it wasn't generated during semantic check
             if (!queryEmbedding) {
               queryEmbedding = await embeddingService.generateEmbedding(key);

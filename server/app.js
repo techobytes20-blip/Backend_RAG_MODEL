@@ -1,4 +1,4 @@
-import express from 'express';
+import express from 'express'; // server entry point
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
